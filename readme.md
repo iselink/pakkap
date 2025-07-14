@@ -3,7 +3,7 @@
 Captures packets on the interface (like tcpdump) with the following criteria:
 
 - Split into multiple files over time
-- Check if there is enough space on the filesystem
+- Check if there is enough space on the filesystem (still can go a little bit over)
 
 And later maybe do other stuff like:
 

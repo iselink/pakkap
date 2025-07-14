@@ -21,6 +21,7 @@ type Outputer struct {
 	OutFile       *OutOpenFile
 	Mutex         *sync.Mutex
 	PacketChannel chan gopacket.Packet
+	Threshold     int
 }
 
 type OutOpenFile struct {
@@ -29,13 +30,14 @@ type OutOpenFile struct {
 	pcapWriter    *pcapgo.Writer
 }
 
-func NewOutputer(rootFolder string, snaplen uint64, handle *pcap.Handle) *Outputer {
+func NewOutputer(rootFolder string, snaplen uint64, handle *pcap.Handle, threshold int) *Outputer {
 	return &Outputer{
 		RootFolder:    rootFolder,
 		Snaplen:       snaplen,
 		Handle:        handle,
 		Mutex:         &sync.Mutex{},
 		PacketChannel: make(chan gopacket.Packet, PacketChannelSize),
+		Threshold:     threshold,
 	}
 }
 
@@ -80,7 +82,16 @@ func (o *Outputer) StartFileHandlingLoop() {
 					if o.OutFile != nil {
 						_ = o.OutFile.file.Close()
 					}
-					err := o.OpenNewFile()
+					over, _, err := CheckDiskUsage(o.RootFolder, o.Threshold)
+					if err != nil {
+						panic(err)
+					} else if over {
+						//TODO: not event tested yet -
+						slog.Info("Reached maximum permitted usage.")
+						os.Exit(2)
+					}
+
+					err = o.OpenNewFile()
 					if err != nil {
 						panic(err)
 					}

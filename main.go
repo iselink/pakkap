@@ -60,7 +60,7 @@ func main() {
 	}
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
-	out := NewOutputer(*flagFolder, snaplen, handle)
+	out := NewOutputer(*flagFolder, snaplen, handle, *flagMaxUsage)
 	out.StartFileHandlingLoop()
 
 	for packet := range source.Packets() {
