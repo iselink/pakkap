@@ -16,7 +16,7 @@ const PacketChannelSize = 128
 
 type Outputer struct {
 	RootFolder    string
-	Snaplen       uint64
+	Snaplen       uint32
 	Handle        *pcap.Handle
 	OutFile       *OutOpenFile
 	Mutex         *sync.Mutex
@@ -30,7 +30,7 @@ type OutOpenFile struct {
 	pcapWriter    *pcapgo.Writer
 }
 
-func NewOutputer(rootFolder string, snaplen uint64, handle *pcap.Handle, threshold int) *Outputer {
+func NewOutputer(rootFolder string, snaplen uint32, handle *pcap.Handle, threshold int) *Outputer {
 	return &Outputer{
 		RootFolder:    rootFolder,
 		Snaplen:       snaplen,
@@ -53,7 +53,7 @@ func (o *Outputer) OpenNewFile() error {
 
 	oof.pcapWriter = pcapgo.NewWriterNanos(oof.file)
 
-	err = oof.writeHeader(o.Handle)
+	err = oof.writeHeader(o.Handle, o.Snaplen)
 	if err != nil {
 		return err
 	}
@@ -63,13 +63,15 @@ func (o *Outputer) OpenNewFile() error {
 	return nil
 }
 
-// StartFileHandlingLoop Creates loop handling rotation of the files and checking disk space.
+// StartFileHandlingLoop Creates loop handling rotation of the files, writing packets and checking disk space.
+// This function is a non-blocking - starts goroutine where all the magic starts happening...
 func (o *Outputer) StartFileHandlingLoop() {
 	fileRotateTicker := time.NewTicker(time.Minute * 5)
 	//fileRotateTicker := time.NewTicker(time.Second * 10)
 	err := o.OpenNewFile()
 	if err != nil {
-		panic(err)
+		slog.Error("Error creating first file.", slog.String("err", err.Error()))
+		os.Exit(1)
 	}
 	go func() {
 		for {
@@ -77,14 +79,14 @@ func (o *Outputer) StartFileHandlingLoop() {
 			case _ = <-fileRotateTicker.C:
 				{
 					slog.Info("Rotating capture file...")
-					//TODO: create new file
-					//TODO: error handling
 					if o.OutFile != nil {
-						_ = o.OutFile.file.Close()
+						err := o.OutFile.file.Close()
+						slog.Error("Error closing file.", slog.String("err", err.Error()), slog.String("filename", o.OutFile.file.Name()))
+						os.Exit(1)
 					}
 					over, _, err := CheckDiskUsage(o.RootFolder, o.Threshold)
 					if err != nil {
-						panic(err)
+						slog.Warn("Unable to check available disk space.", slog.String("err", err.Error()))
 					} else if over {
 						//TODO: not event tested yet -
 						slog.Info("Reached maximum permitted usage.")
@@ -93,15 +95,15 @@ func (o *Outputer) StartFileHandlingLoop() {
 
 					err = o.OpenNewFile()
 					if err != nil {
-						panic(err)
+						slog.Error("Error creating new file.", slog.String("err", err.Error()))
+						os.Exit(1)
 					}
 				}
 			case packet := <-o.PacketChannel:
 				{
-					//TODO: error handling
 					err := o.OutFile.writePacket(packet)
 					if err != nil {
-						panic(err)
+						slog.Error("Error writing packet.", slog.String("err", err.Error()))
 					}
 				}
 			}
@@ -109,7 +111,7 @@ func (o *Outputer) StartFileHandlingLoop() {
 	}()
 }
 
-func (f *OutOpenFile) writeHeader(handle *pcap.Handle) error {
+func (f *OutOpenFile) writeHeader(handle *pcap.Handle, snaplen uint32) error {
 	err := f.pcapWriter.WriteFileHeader(snaplen, handle.LinkType())
 	if err != nil {
 		return err

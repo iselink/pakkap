@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-const snaplen = 1600
-const defaultFolderPerms = 0700
+// defaultFolderPerms Default permissions for created folders - RWX------ (read, write and execute for the owner only)
+const defaultFolderPerms = unix.S_IRUSR | unix.S_IWUSR | unix.S_IXUSR
 
 func main() {
 	slog.Info("Initiating packet capture software...")
@@ -21,6 +21,7 @@ func main() {
 	flagNic := flag.String("interface", "lo", "Interface to capture packets on")
 	flagFolder := flag.String("out", "./capture", "Folder where to write captured packets")
 	flagMaxUsage := flag.Int("usage", 90, "Maximum disk usage before aborting additional capture (from 1 to 100).")
+	flagSnapLen := flag.Uint("snaplen", 1600, "Maximum size to read for each packet")
 
 	flag.Parse()
 
@@ -53,14 +54,14 @@ func main() {
 	/////////
 
 	//instead of pcap.BlockForever wait max 1s, then
-	handle, err := pcap.OpenLive(*flagNic, snaplen, true, 1*time.Second)
+	handle, err := pcap.OpenLive(*flagNic, int32(*flagSnapLen), true, 1*time.Second)
 	if err != nil {
 		slog.Error("Could not OpenLive", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
-	out := NewOutputer(*flagFolder, snaplen, handle, *flagMaxUsage)
+	out := NewOutputer(*flagFolder, uint32(*flagSnapLen), handle, *flagMaxUsage)
 	out.StartFileHandlingLoop()
 
 	for packet := range source.Packets() {
@@ -71,6 +72,9 @@ func main() {
 
 }
 
+// CreateCaptureFolderAndCheckContent Creates folder(s) by provided flag.
+// If a folder exists and is not empty, it returns an error.
+// Also returns an error if some kind of error occurred.
 func CreateCaptureFolderAndCheckContent(folder string) error {
 	err := os.MkdirAll(folder, defaultFolderPerms)
 	if err != nil {
@@ -90,6 +94,7 @@ func CreateCaptureFolderAndCheckContent(folder string) error {
 }
 
 // CheckDiskUsage Check disk usage of the filesystem.
+// Returns true if we are over a threshold, how much is used and error returns error or nil.
 func CheckDiskUsage(folder string, threshold int) (bool, float64, error) {
 	var stat unix.Statfs_t
 
