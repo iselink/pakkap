@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
 	"time"
 )
 
@@ -40,6 +41,8 @@ func main() {
 		os.Exit(RC_RUNTIME_ERR)
 	}
 
+	hookInterrupt(handle)
+
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
 	out := NewOutputer(*flagFolder, uint32(*flagSnapLen), handle, *flagMaxUsage)
 	out.StartFileHandlingLoop(time.Duration(*flagTimeSnapshot) * time.Second)
@@ -50,6 +53,26 @@ func main() {
 		}
 	}
 
+}
+
+// hookInterrupt This function will start the goroutine responsible for "graceful termination".
+// It closes the PCAP handle, which will have a cascade effect to close everything else.
+// Also, stops listening for the new signals - after receiving "exiting" signals, it will exit the goroutine.
+func hookInterrupt(handle *pcap.Handle) {
+	var c = make(chan os.Signal, 16) //doesn't matter how much signals we can buffer
+	signal.Notify(c, unix.SIGHUP, unix.SIGINT, unix.SIGTERM)
+
+	go func() {
+		for {
+			sig, ok := <-c
+			if ok {
+				slog.Info("Received signal", "signal", sig.String())
+				handle.Close()
+				signal.Reset(unix.SIGHUP, unix.SIGINT, unix.SIGTERM)
+				return
+			}
+		}
+	}()
 }
 
 // validateFlags Validate input flags and exit if there is issue with flag's value.
