@@ -15,6 +15,11 @@ import (
 // defaultFolderPerms Default permissions for created folders - RWX------ (read, write and execute for the owner only)
 const defaultFolderPerms = unix.S_IRUSR | unix.S_IWUSR | unix.S_IXUSR
 
+const (
+	RC_INVALID_FLAG = 1
+	RC_RUNTIME_ERR  = 3
+)
+
 func main() {
 	slog.Info("Initiating packet capture software...")
 
@@ -26,47 +31,13 @@ func main() {
 
 	flag.Parse()
 
-	_, err := net.InterfaceByName(*flagNic)
-	if err != nil {
-		slog.Error("Error validating interface name.", "err", err.Error(), "name", *flagNic)
-		os.Exit(1)
-	}
-
-	if *flagMaxUsage < 0 && *flagMaxUsage > 100 {
-		slog.Error("Invalid max usage threshold set - must be between 0 and 100 %.", "value", *flagMaxUsage)
-		os.Exit(1)
-	}
-
-	if *flagTimeSnapshot < 10 {
-		slog.Error("timer argument must be more than 10 second.", slog.Int64("value", *flagTimeSnapshot), slog.Int("min", 10))
-		os.Exit(1)
-	} else if *flagTimeSnapshot > int64(time.Hour*12) {
-		slog.Error("timer argument must be less than 12 hours.", slog.Int64("value", *flagTimeSnapshot), slog.Duration("max", time.Hour*12))
-		os.Exit(1)
-	}
-
-	err = CreateCaptureFolderAndCheckContent(*flagFolder)
-	if err != nil {
-		slog.Error("Unable to create output folder", "err", err.Error())
-		os.Exit(1)
-	}
-
-	aboveThreshold, currentUsage, err := CheckDiskUsage(*flagFolder, *flagMaxUsage)
-	if err != nil {
-		slog.Error("Error while checking disk usage", "err", err.Error())
-		os.Exit(1)
-	} else if aboveThreshold {
-		slog.Error("Disk usage is already above stop threshold.", "threshold", *flagMaxUsage, "current", currentUsage)
-		os.Exit(1)
-	}
-
-	/////////
+	err := validateFlags(flagNic, flagMaxUsage, flagTimeSnapshot, flagFolder)
 
 	//instead of pcap.BlockForever wait max 1s, then
 	handle, err := pcap.OpenLive(*flagNic, int32(*flagSnapLen), true, 1*time.Second)
 	if err != nil {
 		slog.Error("Could not OpenLive", slog.String("err", err.Error()))
-		os.Exit(1)
+		os.Exit(RC_RUNTIME_ERR)
 	}
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -79,6 +50,44 @@ func main() {
 		}
 	}
 
+}
+
+// validateFlags Validate input flags and exit if there is issue with flag's value.
+func validateFlags(flagNic *string, flagMaxUsage *int, flagTimeSnapshot *int64, flagFolder *string) error {
+	_, err := net.InterfaceByName(*flagNic)
+	if err != nil {
+		slog.Error("Error validating interface name.", "err", err.Error(), "name", *flagNic)
+		os.Exit(RC_INVALID_FLAG)
+	}
+
+	if *flagMaxUsage < 0 && *flagMaxUsage > 100 {
+		slog.Error("Invalid max usage threshold set - must be between 0 and 100 %.", "value", *flagMaxUsage)
+		os.Exit(RC_INVALID_FLAG)
+	}
+
+	if *flagTimeSnapshot < 10 {
+		slog.Error("timer argument must be more than 10 second.", slog.Int64("value", *flagTimeSnapshot), slog.Int("min", 10))
+		os.Exit(RC_INVALID_FLAG)
+	} else if *flagTimeSnapshot > int64(time.Hour*12) {
+		slog.Error("timer argument must be less than 12 hours.", slog.Int64("value", *flagTimeSnapshot), slog.Duration("max", time.Hour*12))
+		os.Exit(RC_INVALID_FLAG)
+	}
+
+	err = CreateCaptureFolderAndCheckContent(*flagFolder)
+	if err != nil {
+		slog.Error("Unable to create output folder", "err", err.Error())
+		os.Exit(RC_INVALID_FLAG)
+	}
+
+	aboveThreshold, currentUsage, err := CheckDiskUsage(*flagFolder, *flagMaxUsage)
+	if err != nil {
+		slog.Error("Error while checking disk usage", "err", err.Error())
+		os.Exit(RC_INVALID_FLAG)
+	} else if aboveThreshold {
+		slog.Error("Disk usage is already above stop threshold.", "threshold", *flagMaxUsage, "current", currentUsage)
+		os.Exit(RC_INVALID_FLAG)
+	}
+	return err
 }
 
 // CreateCaptureFolderAndCheckContent Creates folder(s) by provided flag.

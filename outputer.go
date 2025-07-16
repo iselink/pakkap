@@ -71,7 +71,7 @@ func (o *Outputer) StartFileHandlingLoop(fileRotationInterval time.Duration) {
 	err := o.OpenNewFile()
 	if err != nil {
 		slog.Error("Error creating first file.", slog.String("err", err.Error()))
-		os.Exit(1)
+		os.Exit(RC_RUNTIME_ERR)
 	}
 	go func() {
 		for {
@@ -83,7 +83,7 @@ func (o *Outputer) StartFileHandlingLoop(fileRotationInterval time.Duration) {
 						err := o.OutFile.file.Close()
 						if err != nil {
 							slog.Error("Error closing file.", slog.String("err", err.Error()), slog.String("filename", o.OutFile.file.Name()))
-							os.Exit(1)
+							os.Exit(RC_RUNTIME_ERR)
 						}
 					}
 					over, _, err := CheckDiskUsage(o.RootFolder, o.Threshold)
@@ -92,13 +92,13 @@ func (o *Outputer) StartFileHandlingLoop(fileRotationInterval time.Duration) {
 					} else if over {
 						//TODO: not event tested yet -
 						slog.Info("Reached maximum permitted usage.")
-						os.Exit(2)
+						os.Exit(RC_RUNTIME_ERR)
 					}
 
 					err = o.OpenNewFile()
 					if err != nil {
 						slog.Error("Error creating new file.", slog.String("err", err.Error()))
-						os.Exit(1)
+						os.Exit(RC_RUNTIME_ERR)
 					}
 				}
 			case packet := <-o.PacketChannel:
