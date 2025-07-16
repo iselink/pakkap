@@ -64,10 +64,10 @@ func (o *Outputer) OpenNewFile() error {
 }
 
 // StartFileHandlingLoop Creates loop handling rotation of the files, writing packets and checking disk space.
+// fileRotationInterval - amount of time before closing current capture file and opening new capture file.
 // This function is a non-blocking - starts goroutine where all the magic starts happening...
-func (o *Outputer) StartFileHandlingLoop() {
-	fileRotateTicker := time.NewTicker(time.Minute * 5)
-	//fileRotateTicker := time.NewTicker(time.Second * 10)
+func (o *Outputer) StartFileHandlingLoop(fileRotationInterval time.Duration) {
+	fileRotateTicker := time.NewTicker(fileRotationInterval)
 	err := o.OpenNewFile()
 	if err != nil {
 		slog.Error("Error creating first file.", slog.String("err", err.Error()))

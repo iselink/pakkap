@@ -20,8 +20,9 @@ func main() {
 
 	flagNic := flag.String("interface", "lo", "Interface to capture packets on")
 	flagFolder := flag.String("out", "./capture", "Folder where to write captured packets")
-	flagMaxUsage := flag.Int("usage", 90, "Maximum disk usage before aborting additional capture (from 1 to 100).")
+	flagMaxUsage := flag.Int("usage", 90, "Maximum disk usage before aborting additional capture (from 1 to 100)")
 	flagSnapLen := flag.Uint("snaplen", 1600, "Maximum size to read for each packet")
+	flagTimeSnapshot := flag.Int64("timer", int64(time.Minute*5), "Time between creating new capture file (default 5 minutes)")
 
 	flag.Parse()
 
@@ -33,6 +34,14 @@ func main() {
 
 	if *flagMaxUsage < 0 && *flagMaxUsage > 100 {
 		slog.Error("Invalid max usage threshold set - must be between 0 and 100 %.", "value", *flagMaxUsage)
+		os.Exit(1)
+	}
+
+	if *flagTimeSnapshot < 10 {
+		slog.Error("timer argument must be more than 10 second.", slog.Int64("value", *flagTimeSnapshot), slog.Int("min", 10))
+		os.Exit(1)
+	} else if *flagTimeSnapshot > int64(time.Hour*12) {
+		slog.Error("timer argument must be less than 12 hours.", slog.Int64("value", *flagTimeSnapshot), slog.Duration("max", time.Hour*12))
 		os.Exit(1)
 	}
 
@@ -62,7 +71,7 @@ func main() {
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
 	out := NewOutputer(*flagFolder, uint32(*flagSnapLen), handle, *flagMaxUsage)
-	out.StartFileHandlingLoop()
+	out.StartFileHandlingLoop(time.Duration(*flagTimeSnapshot) * time.Second)
 
 	for packet := range source.Packets() {
 		if packet != nil {
