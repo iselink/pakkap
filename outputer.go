@@ -81,8 +81,10 @@ func (o *Outputer) StartFileHandlingLoop(fileRotationInterval time.Duration) {
 					slog.Info("Rotating capture file...")
 					if o.OutFile != nil {
 						err := o.OutFile.file.Close()
-						slog.Error("Error closing file.", slog.String("err", err.Error()), slog.String("filename", o.OutFile.file.Name()))
-						os.Exit(1)
+						if err != nil {
+							slog.Error("Error closing file.", slog.String("err", err.Error()), slog.String("filename", o.OutFile.file.Name()))
+							os.Exit(1)
+						}
 					}
 					over, _, err := CheckDiskUsage(o.RootFolder, o.Threshold)
 					if err != nil {
