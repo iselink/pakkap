@@ -28,7 +28,8 @@ func main() {
 	flagFolder := flag.String("out", "./capture", "Folder where to write captured packets")
 	flagMaxUsage := flag.Int("usage", 90, "Maximum disk usage before aborting additional capture (from 1 to 100)")
 	flagSnapLen := flag.Uint("snaplen", 1600, "Maximum size to read for each packet")
-	flagTimeSnapshot := flag.Int64("timer", int64(time.Minute*5), "Time between creating new capture file (default 5 minutes)")
+	flagTimeSnapshot := flag.Int64("timer", int64(5*60), "Time between creating new capture file (default 5 minutes)")
+	flagBFP := flag.String("bfp", "", "BFP program to use with packet capture")
 
 	flag.Parse()
 
@@ -42,6 +43,12 @@ func main() {
 	}
 
 	hookInterrupt(handle)
+
+	err = handle.SetBPFFilter(*flagBFP)
+	if err != nil {
+		slog.Error("Error while setting BPF filter", slog.String("err", err.Error()))
+		os.Exit(RC_INVALID_FLAG)
+	}
 
 	source := gopacket.NewPacketSource(handle, handle.LinkType())
 	out := NewOutputer(*flagFolder, uint32(*flagSnapLen), handle, *flagMaxUsage)
